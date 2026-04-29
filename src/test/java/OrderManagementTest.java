@@ -1,157 +1,147 @@
+import factory.ProductFactory;
+import factory.UserFactory;
+import models.OrderStatus;
+import models.Product;
+import models.User;
+import org.assertj.core.api.SoftAssertions;
 import pages.OrdersPage;
 import org.junit.jupiter.api.*;
-import org.openqa.selenium.By;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.chrome.ChromeDriver;
+import pages.ProductsPage;
+import pages.UserPage;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class OrderManagementTest {
+class OrderManagementTest extends BaseTest {
+    // антипаттерн: test-interdependency
+    // не используется @Order, каждый тест создает свои данные в setupCustomerAndProduct()
 
-    private static WebDriver driver;
-    private static OrdersPage ordersPage;
-    private static String createdOrderId;
+    private OrdersPage ordersPage;
+    private ProductsPage productsPage;
+    private UserPage userPage;
+    private User customer;
+    private Product product;
+    private String orderId;
 
     @BeforeEach
-    void setUp() {
-        driver = new ChromeDriver();
-        driver.manage().window().maximize();
-        driver.get("https://orders.internal.example.com");
-
-
-        driver.findElement(By.id("username")).sendKeys("admin");
-        driver.findElement(By.id("password")).sendKeys("Admin123!");
-        driver.findElement(By.id("login-btn")).click();
-        try {
-            Thread.sleep(2000);
-        } catch (Exception e) {
-        }
-
-
+    void initPages() {
+        userPage = new UserPage(driver);
+        productsPage = new ProductsPage(driver);
         ordersPage = new OrdersPage(driver);
-        ordersPage.openUsersList();
-        ordersPage.createUser("Иван Петров", "ivan@test.com", "CUSTOMER");
-        try {
-            Thread.sleep(1000);
-        } catch (Exception e) {
+    }
+
+    @AfterEach
+    void cleanUp() {
+        // антипаттерн: no-data-isolation
+        // очистка данных после теста
+        // антипаттерн: interacting-tests
+        // сброс состояния, чтобы тесты не влияли друг на друга
+        if (orderId != null) {
+            ordersPage.deleteOrder(orderId);
         }
 
-
-        ordersPage.openProductCatalog();
-        ordersPage.createProduct("Тестовый товар", 999);
-        try {
-            Thread.sleep(1000);
-        } catch (Exception e) {
+        if (customer != null) {
+            userPage.openUsersList();
+            userPage.deleteUser(customer.getEmail());
         }
 
+        if (product != null) {
+            productsPage.openProductCatalog();
+            productsPage.deleteProduct(product.getName());
+        }
+    }
 
-        driver.findElement(By.linkText("Заказы")).click();
+    private void setupCustomerAndProduct() {
+        customer = UserFactory.defaultCustomer();
+        userPage.openUsersList();
+        userPage.createUser(customer);
+
+        product = ProductFactory.defaultProduct();
+        productsPage.openProductCatalog();
+        productsPage.createProduct(product);
+
+        ordersPage.clickOrdersLink();
+    }
+
+    /**
+     * Создание базового заказа
+     */
+    private String createTestOrder(int quantity) {
+        if (customer == null || product == null) {
+            setupCustomerAndProduct();
+        }
+        ordersPage.clickCreateOrder();
+        ordersPage.fillCustomer(customer);
+        ordersPage.fillPayment(customer);
+        productsPage.selectFirstProduct(product.getName());
+        ordersPage.setQuantity(quantity);
+        ordersPage.submitOrder();
+        this.orderId = ordersPage.getOrderId();
+        return this.orderId;
     }
 
     @Test
-    @Order(1)
     void createOrderAndVerifyAllFields() {
-        ordersPage.clickCreateOrder();
-        ordersPage.fillCustomer("Иван Петров", "+79990000001", "Москва, Тверская, 1");
-        ordersPage.fillPayment("CARD", "4111111111111111");
-        ordersPage.selectProduct("Тестовый товар");
-        ordersPage.setQuantity(3);
-        ordersPage.submitOrder();
+        // антипаттерн: hard-coded-data
+        // данные берутся из фабрик и конфига, а постоянно прописывается вручную
+        // антипаттерн: irrelevant-information
+        // в фабрике только значимые поля, остальное - дефолты
+        // антипаттерн: eager-test
+        // один тест проверяет одно поведение (создание заказа), а не всё сразу
+        int quantity = 3;
+        orderId = createTestOrder(quantity);
 
-        createdOrderId = ordersPage.getOrderId();
-
-
-        assertEquals("Иван Петров",
-                driver.findElement(By.cssSelector(".order-detail .customer-name")).getText());
-        assertEquals("+79990000001",
-                driver.findElement(By.cssSelector(".order-detail .customer-phone")).getText());
-        assertEquals("Москва, Тверская, 1",
-                driver.findElement(By.cssSelector(".order-detail .customer-address")).getText());
-        assertEquals("3",
-                driver.findElement(By.cssSelector(".order-detail .qty")).getText());
-        assertEquals("2 997 ₽",
-                driver.findElement(By.cssSelector(".order-detail .total")).getText());
-        assertEquals("PENDING", ordersPage.getOrderStatus(createdOrderId));
-        assertTrue(
-                driver.findElement(By.cssSelector(".order-detail .created-at")).isDisplayed());
-        assertFalse(
-                driver.findElement(By.cssSelector(".order-detail .error-block")).isDisplayed());
+        // антипаттерн: assertion-roulette
+        // softAssertions чтобы увидеть все ошибки за один прогон
+        SoftAssertions soft = new SoftAssertions();
+        soft.assertThat(ordersPage.getDetailCustomerName()).isEqualTo(customer.getName());
+        soft.assertThat(ordersPage.getDetailCustomerPhone()).isEqualTo(customer.getPhone());
+        soft.assertThat(ordersPage.getDetailCustomerAddress()).isEqualTo(customer.getAddress());
+        soft.assertThat(ordersPage.getDetailQuantity()).isEqualTo(quantity);
+        soft.assertThat(ordersPage.getDetailTotal()).isEqualTo(product.getFormattedPrice(quantity));
+        soft.assertThat(ordersPage.getOrderStatus(orderId)).isEqualTo(OrderStatus.PENDING);
+        soft.assertThat(ordersPage.isCreatedAtDisplayed()).isTrue();
+        soft.assertThat(ordersPage.isErrorBlockDisplayed()).isFalse();
+        soft.assertAll();
     }
 
     @Test
-    @Order(2)
     void approveCreatedOrder() {
+        // антипаттерн: test-interdependency
+        // тест сам создает заказ и не зависит от других тестов
+        orderId = createTestOrder(1);
+        ordersPage.clickApprove(orderId);
 
-        ordersPage.clickApprove(createdOrderId);
-        assertEquals("APPROVED", ordersPage.getOrderStatus(createdOrderId));
+        assertThat(ordersPage.getOrderStatus(orderId)).isEqualTo(OrderStatus.APPROVED);
     }
 
     @Test
-    @Order(3)
     void cancelCreatedOrder() {
-
-        ordersPage.clickCreateOrder();
-        ordersPage.fillCustomer("Иван Петров", "+79990000001", "Москва, Тверская, 1");
-        ordersPage.fillPayment("CARD", "4111111111111111");
-        ordersPage.selectProduct("Тестовый товар");
-        ordersPage.setQuantity(1);
-        ordersPage.submitOrder();
-
-        String orderId = ordersPage.getOrderId();
-
+        orderId = createTestOrder(1);
         ordersPage.clickCancel(orderId);
 
-
-        String status = ordersPage.getOrderStatus(orderId);
-        if (status.equals("PENDING") || status.equals("APPROVED")) {
-            fail("Ожидался статус CANCELLED, но получен: " + status);
-        } else {
-            assertEquals("CANCELLED", status);
-        }
+        assertThat(ordersPage.getOrderStatus(orderId)).isEqualTo(OrderStatus.CANCELLED);
     }
 
     @Test
     void searchOrdersByCustomer() {
-        driver.findElement(By.id("search-input")).sendKeys("Иван Петров");
-        driver.findElement(By.id("search-btn")).click();
+        createTestOrder(1);
+        ordersPage.searchOrderByCustomer(customer.getName());
+        // антипаттерн: conditional-test-logic
+        // убраны циклы for и условия if
+        List<String> customerNames = ordersPage.getVisibleCustomerNames();
 
-        try {
-            Thread.sleep(1500);
-        } catch (Exception e) {
-
-        }
-
-        List<WebElement> rows = driver.findElements(
-                By.cssSelector("#orders-grid tbody tr")
-        );
-
-
-        for (WebElement row : rows) {
-            String customer = row.findElement(By.cssSelector("td:nth-child(2)")).getText();
-            if (customer.contains("Иван")) {
-                assertTrue(row.isDisplayed());
-            }
-        }
+        assertThat(customerNames).isNotEmpty()
+                .allSatisfy(name -> assertThat(name).contains(customer.getName()));
     }
 
     @Test
     void exportOrdersToExcel() {
-        try {
-            driver.findElement(By.id("export-btn")).click();
-            Thread.sleep(3000);
-            assertTrue(driver.findElement(By.id("export-btn")).isEnabled());
-        } catch (Exception e) {
+        // Если для экспорта должен быть создан хотя бы 1 заказ
+        createTestOrder(1);
+        ordersPage.clickExportButton();
 
-        }
-    }
-
-    @AfterEach
-    void tearDown() {
-        driver.quit();
-
+        assertThat(ordersPage.isExportStarted()).isTrue();
     }
 }

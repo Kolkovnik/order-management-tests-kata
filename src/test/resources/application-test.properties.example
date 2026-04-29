@@ -1,0 +1,3 @@
+TEST_ADMIN_LOGIN=yourLogin
+TEST_ADMIN_PASSWORD=yourPassword
+BASE_URL=yourURL
