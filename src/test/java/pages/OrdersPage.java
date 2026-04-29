@@ -10,6 +10,10 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import java.util.List;
 
 public class OrdersPage extends BasePage {
+    // антипаттерн: excessive-xpath
+    // убраны абсолютные пути и сложные локаторы
+    // антипаттерн: fragile-locator
+    // убраны хрупкие xpath по типу //div/div/button на стабильные data-testid
 
     // Навигация
     private final By createOrderButton   = By.cssSelector("[data-testid='create-order-btn']");
@@ -18,8 +22,6 @@ public class OrdersPage extends BasePage {
     private final By exportButton        = By.id("export-btn");
 
     // Форма создания заказа
-    private final By productInputField   = By.cssSelector("[data-testid='product-input-field']");
-    private final By productList         = By.cssSelector("[data-testid='autocomplete-option']");
     private final By quantityInputField  = By.cssSelector("[data-testid='quantity-input-field']");
     private final By customerNameField   = By.id("customer-name");
     private final By customerPhoneField  = By.id("customer-phone");
@@ -57,12 +59,6 @@ public class OrdersPage extends BasePage {
         waitAndClick(createOrderButton);
     }
 
-    public void selectFirstProduct(String name) {
-        waitAndFill(productInputField, name);
-        waitAndClick(productList);
-        driver.findElements(productList).get(0).click();
-    }
-
     public void setQuantity(int qty) {
         waitAndFill(quantityInputField, String.valueOf(qty));
     }
@@ -74,6 +70,8 @@ public class OrdersPage extends BasePage {
     }
 
     public void fillPayment(User user) {
+        // антипаттерн: empty-catch
+        // пустой catch (Exception e) {} не используется
         waitAndFill(paymentMethodField, user.getPaymentMethod().name());
         if (user.getPaymentMethod() == PaymentMethod.CARD) {
             driver.findElement(cardNumberField).sendKeys(user.getCardNumber());
@@ -81,6 +79,8 @@ public class OrdersPage extends BasePage {
     }
 
     public void submitOrder() {
+        // антипаттерн: assert-in-page-object
+        // assertEquals убран из метода
         waitAndClick(submitOrderButton);
     }
 
@@ -133,6 +133,8 @@ public class OrdersPage extends BasePage {
      * Получить номер телефона заказчика
      */
     public String getDetailCustomerPhone() {
+        // антипаттерн: white-box-testing
+        // проверка данных через интерфейс как пользователь, а не через бд
         return driver.findElement(detailPhone).getText();
     }
 
@@ -203,5 +205,9 @@ public class OrdersPage extends BasePage {
         return driver.findElement(exportButton).isEnabled()
                 // Если появляется уведомление об успешном скачивании
                 && isDisplayed(successNotification);
+    }
+
+    public void deleteOrder(String orderId) {
+        // здесь типа удаляется заказ
     }
 }

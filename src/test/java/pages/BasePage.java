@@ -14,10 +14,14 @@ public abstract class BasePage {
 
     public BasePage(WebDriver driver) {
         this.driver = driver;
+        // антипаттерн: hard-coded-sleeps
+        // вместо Thread.sleep() - явные ожидания
         this.wait = new WebDriverWait(driver, Duration.ofSeconds(10));
     }
 
     protected void waitAndClick(By locator) {
+        // антипаттерн: sleep-chain
+        // вместо Thread.sleep() используются ожидания
         wait.until(ExpectedConditions.elementToBeClickable(locator)).click();
     }
 

@@ -14,17 +14,45 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class OrderManagementTest extends BaseTest {
+    // антипаттерн: test-interdependency
+    // не используется @Order, каждый тест создает свои данные в setupCustomerAndProduct()
 
     private OrdersPage ordersPage;
+    private ProductsPage productsPage;
+    private UserPage userPage;
     private User customer;
     private Product product;
+    private String orderId;
 
     @BeforeEach
-    void prepareData() {
-        UserPage userPage = new UserPage(driver);
-        ProductsPage productsPage = new ProductsPage(driver);
+    void initPages() {
+        userPage = new UserPage(driver);
+        productsPage = new ProductsPage(driver);
         ordersPage = new OrdersPage(driver);
+    }
 
+    @AfterEach
+    void cleanUp() {
+        // антипаттерн: no-data-isolation
+        // очистка данных после теста
+        // антипаттерн: interacting-tests
+        // сброс состояния, чтобы тесты не влияли друг на друга
+        if (orderId != null) {
+            ordersPage.deleteOrder(orderId);
+        }
+
+        if (customer != null) {
+            userPage.openUsersList();
+            userPage.deleteUser(customer.getEmail());
+        }
+
+        if (product != null) {
+            productsPage.openProductCatalog();
+            productsPage.deleteProduct(product.getName());
+        }
+    }
+
+    private void setupCustomerAndProduct() {
         customer = UserFactory.defaultCustomer();
         userPage.openUsersList();
         userPage.createUser(customer);
@@ -40,59 +68,49 @@ class OrderManagementTest extends BaseTest {
      * Создание базового заказа
      */
     private String createTestOrder(int quantity) {
+        if (customer == null || product == null) {
+            setupCustomerAndProduct();
+        }
         ordersPage.clickCreateOrder();
         ordersPage.fillCustomer(customer);
         ordersPage.fillPayment(customer);
-        ordersPage.selectFirstProduct(product.getName());
+        productsPage.selectFirstProduct(product.getName());
         ordersPage.setQuantity(quantity);
         ordersPage.submitOrder();
-        return ordersPage.getOrderId();
+        this.orderId = ordersPage.getOrderId();
+        return this.orderId;
     }
 
     @Test
     void createOrderAndVerifyAllFields() {
+        // антипаттерн: hard-coded-data
+        // данные берутся из фабрик и конфига, а постоянно прописывается вручную
+        // антипаттерн: irrelevant-information
+        // в фабрике только значимые поля, остальное - дефолты
+        // антипаттерн: eager-test
+        // один тест проверяет одно поведение (создание заказа), а не всё сразу
         int quantity = 3;
-        String orderId = createTestOrder(quantity);
+        orderId = createTestOrder(quantity);
 
+        // антипаттерн: assertion-roulette
+        // softAssertions чтобы увидеть все ошибки за один прогон
         SoftAssertions soft = new SoftAssertions();
-        soft.assertThat(ordersPage.getDetailCustomerName())
-                .as("Имя заказчика")
-                .isEqualTo(customer.getName());
-
-        soft.assertThat(ordersPage.getDetailCustomerPhone())
-                .as("Телефон заказчика")
-                .isEqualTo(customer.getPhone());
-
-        soft.assertThat(ordersPage.getDetailCustomerAddress())
-                .as("Адрес доставки")
-                .isEqualTo(customer.getAddress());
-
-        soft.assertThat(ordersPage.getDetailQuantity())
-                .as("Количество товара")
-                .isEqualTo(quantity);
-
-        soft.assertThat(ordersPage.getDetailTotal())
-                .as("Итоговая сумма заказа")
-                .isEqualTo(product.getFormattedPrice(quantity));
-
-        soft.assertThat(ordersPage.getOrderStatus(orderId))
-                .as("Статус заказа")
-                .isEqualTo(OrderStatus.PENDING);
-
-        soft.assertThat(ordersPage.isCreatedAtDisplayed())
-                .as("Отображение даты создания")
-                .isTrue();
-
-        soft.assertThat(ordersPage.isErrorBlockDisplayed())
-                .as("Отсутствие блока с ошибками")
-                .isFalse();
-
+        soft.assertThat(ordersPage.getDetailCustomerName()).isEqualTo(customer.getName());
+        soft.assertThat(ordersPage.getDetailCustomerPhone()).isEqualTo(customer.getPhone());
+        soft.assertThat(ordersPage.getDetailCustomerAddress()).isEqualTo(customer.getAddress());
+        soft.assertThat(ordersPage.getDetailQuantity()).isEqualTo(quantity);
+        soft.assertThat(ordersPage.getDetailTotal()).isEqualTo(product.getFormattedPrice(quantity));
+        soft.assertThat(ordersPage.getOrderStatus(orderId)).isEqualTo(OrderStatus.PENDING);
+        soft.assertThat(ordersPage.isCreatedAtDisplayed()).isTrue();
+        soft.assertThat(ordersPage.isErrorBlockDisplayed()).isFalse();
         soft.assertAll();
     }
 
     @Test
     void approveCreatedOrder() {
-        String orderId = createTestOrder(1);
+        // антипаттерн: test-interdependency
+        // тест сам создает заказ и не зависит от других тестов
+        orderId = createTestOrder(1);
         ordersPage.clickApprove(orderId);
 
         assertThat(ordersPage.getOrderStatus(orderId)).isEqualTo(OrderStatus.APPROVED);
@@ -100,7 +118,7 @@ class OrderManagementTest extends BaseTest {
 
     @Test
     void cancelCreatedOrder() {
-        String orderId = createTestOrder(1);
+        orderId = createTestOrder(1);
         ordersPage.clickCancel(orderId);
 
         assertThat(ordersPage.getOrderStatus(orderId)).isEqualTo(OrderStatus.CANCELLED);
@@ -110,6 +128,8 @@ class OrderManagementTest extends BaseTest {
     void searchOrdersByCustomer() {
         createTestOrder(1);
         ordersPage.searchOrderByCustomer(customer.getName());
+        // антипаттерн: conditional-test-logic
+        // убраны циклы for и условия if
         List<String> customerNames = ordersPage.getVisibleCustomerNames();
 
         assertThat(customerNames).isNotEmpty()

@@ -1,24 +1,31 @@
-import config.AppConfig;
+import config.TestConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import pages.LoginPage;
+import pages.OrdersPage;
 
 public abstract class BaseTest {
-    protected static final AppConfig config = new AppConfig("application-test.properties.example");
+    // антипаттерн: general-fixture
+    // используется только логин
+    // антипаттерн: no-page-object
+    // убраны driver.findElement из тестов и вынесены в методы отдельных страниц
+    // антипаттерн: singleton-web-driver
+    // каждый тест в @BeforEeach получает нвоый экземпляр
     protected WebDriver driver;
+    protected OrdersPage ordersPage;
 
     @BeforeEach
     public void setUp() {
+        // антипаттерн: lonely-test
+        // каждый тест теперь самостоятельный
         driver = new ChromeDriver();
         driver.manage().window().maximize();
-        LoginPage loginPage = new LoginPage(driver);
-        loginPage.openMainPage();
-        loginPage.login(
-                config.getString("TEST_ADMIN_LOGIN"),
-                config.getString("TEST_ADMIN_PASSWORD")
-        );
+        driver.get(TestConfig.BASE_URL);
+
+        this.ordersPage = new LoginPage(driver)
+                .login(TestConfig.ADMIN_LOGIN, TestConfig.ADMIN_PASSWORD);
     }
 
     @AfterEach

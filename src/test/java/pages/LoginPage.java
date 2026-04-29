@@ -13,14 +13,13 @@ public class LoginPage extends BasePage {
         super(driver);
     }
 
-    public void openMainPage() {
-        driver.get("https://orders.internal.example.com");
-    }
-
-    public void login(String user, String pass) {
+    public OrdersPage login(String user, String password) {
+        // антипаттерн: irrelevant-information
+        // реализация скрыта от теста
         waitAndFill(usernameField, user);
-        driver.findElement(passwordField).sendKeys(pass);
+        waitAndFill(passwordField, password);
         waitAndClick(loginButton);
         waitForInvisibility(loginButton);
+        return new OrdersPage(driver);
     }
 }
